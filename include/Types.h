@@ -9,7 +9,11 @@ enum class SystemState : uint8_t {
   Ready,
   Countdown,
   Sending,
+  RetryWait,
+  Retrying,
   Sent,
+  SendPartial,
+  SendFailed,
   Fault
 };
 

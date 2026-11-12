@@ -9,7 +9,9 @@ void EmergencyManager::begin() {
 }
 
 void EmergencyManager::onCrash(CrashKind kind) {
-  if (state_ == SystemState::Sending || state_ == SystemState::Sent) {
+  if (state_ == SystemState::Sending || state_ == SystemState::Sent ||
+      state_ == SystemState::RetryWait || state_ == SystemState::Retrying ||
+      state_ == SystemState::SendPartial || state_ == SystemState::SendFailed) {
     return;
   }
   if (state_ == SystemState::Countdown) {
@@ -21,7 +23,13 @@ void EmergencyManager::onCrash(CrashKind kind) {
 }
 
 void EmergencyManager::onSos() {
-  if (state_ == SystemState::Sending || state_ == SystemState::Sent) {
+  if (state_ == SystemState::Sending || state_ == SystemState::Retrying ||
+      state_ == SystemState::Sent) {
+    return;
+  }
+  if (state_ == SystemState::RetryWait) {
+    attempts_ = 2;
+    state_ = SystemState::Retrying;
     return;
   }
   kind_ = CrashKind::None;
@@ -38,14 +46,30 @@ void EmergencyManager::onCancel() {
     state_ = SystemState::Ready;
     digitalWrite(PIN_BUZZER, LOW);
     digitalWrite(PIN_LED_ALARM, LOW);
-  } else if (state_ == SystemState::Sent) {
+  } else if (state_ == SystemState::RetryWait) {
+    resetAfterAck();
+  } else if (state_ == SystemState::Sent ||
+             state_ == SystemState::SendPartial ||
+             state_ == SystemState::SendFailed) {
     resetAfterAck();
   }
 }
 
 void EmergencyManager::tick() {
+  if (state_ == SystemState::RetryWait) {
+    digitalWrite(PIN_BUZZER, LOW);
+    digitalWrite(PIN_LED_ALARM, LOW);
+    if (static_cast<int32_t>(millis() - retry_until_) >= 0) {
+      attempts_ = 2;
+      state_ = SystemState::Retrying;
+    }
+    return;
+  }
+
   if (state_ != SystemState::Countdown) {
-    if (state_ != SystemState::Sending && state_ != SystemState::Sent) {
+    if (state_ != SystemState::Sending && state_ != SystemState::Retrying &&
+        state_ != SystemState::Sent && state_ != SystemState::SendPartial &&
+        state_ != SystemState::SendFailed) {
       digitalWrite(PIN_LED_ALARM, LOW);
       digitalWrite(PIN_BUZZER, LOW);
     }
@@ -60,29 +84,45 @@ void EmergencyManager::tick() {
   }
 
   if (static_cast<int32_t>(now - countdown_until_) >= 0) {
-    digitalWrite(PIN_BUZZER, HIGH);
+    digitalWrite(PIN_BUZZER, LOW);
+    digitalWrite(PIN_LED_ALARM, HIGH);
+    attempts_ = 1;
     state_ = SystemState::Sending;
   }
 }
 
 bool EmergencyManager::alarmActive() const {
   return state_ == SystemState::Countdown || state_ == SystemState::Sending ||
-         state_ == SystemState::Sent;
+         state_ == SystemState::RetryWait || state_ == SystemState::Retrying ||
+         state_ == SystemState::Sent || state_ == SystemState::SendPartial;
 }
 
 bool EmergencyManager::shouldSend() const {
-  return state_ == SystemState::Sending;
+  return state_ == SystemState::Sending || state_ == SystemState::Retrying;
 }
 
-void EmergencyManager::markSent() {
-  state_ = SystemState::Sent;
+void EmergencyManager::markAttemptResult(bool success,
+                                         bool partial,
+                                         bool retryAvailable) {
+  if (!success && attempts_ == 1 && retryAvailable) {
+    state_ = SystemState::RetryWait;
+    retry_until_ = millis() + 3000;
+    digitalWrite(PIN_BUZZER, LOW);
+    digitalWrite(PIN_LED_ALARM, LOW);
+    return;
+  }
+
+  state_ = success ? SystemState::Sent
+                   : (partial ? SystemState::SendPartial
+                              : SystemState::SendFailed);
   digitalWrite(PIN_BUZZER, LOW);
-  digitalWrite(PIN_LED_ALARM, HIGH);
+  digitalWrite(PIN_LED_ALARM, success || partial ? HIGH : LOW);
 }
 
 void EmergencyManager::resetAfterAck() {
   state_ = SystemState::Ready;
   kind_ = CrashKind::None;
+  attempts_ = 0;
   digitalWrite(PIN_BUZZER, LOW);
   digitalWrite(PIN_LED_ALARM, LOW);
 }

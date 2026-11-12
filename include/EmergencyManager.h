@@ -14,7 +14,8 @@ class EmergencyManager {
 
   bool alarmActive() const;
   bool shouldSend() const;
-  void markSent();
+  uint8_t attemptNumber() const { return attempts_; }
+  void markAttemptResult(bool success, bool partial, bool retryAvailable);
   void resetAfterAck();
 
   CrashKind kind() const { return kind_; }
@@ -25,5 +26,7 @@ class EmergencyManager {
   SystemState state_ = SystemState::Ready;
   CrashKind kind_ = CrashKind::None;
   uint32_t countdown_until_ = 0;
+  uint32_t retry_until_ = 0;
   uint32_t last_beep_ = 0;
+  uint8_t attempts_ = 0;
 };

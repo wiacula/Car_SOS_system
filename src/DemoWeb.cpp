@@ -9,6 +9,7 @@
 static WebServer server(80);
 static String json_state_ = "{}";
 static String event_log_ = "";
+static String sms_result_ = "Nie wysylano jeszcze SMS";
 
 static const char INDEX_HTML[] PROGMEM = R"HTML(
 <!DOCTYPE html>
@@ -32,6 +33,7 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
 <div class="card">
  <h2>Inteligentny system ratunkowy</h2>
  <p id="st">laczenie...</p>
+ <p id="sms-result" class="warn"></p>
  <p id="m"></p>
  <div class="reading">
   <span>Temperatura kabiny</span>
@@ -39,6 +41,8 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
  </div>
  <h3>Diagnostyka GPS na zywo</h3>
  <p id="gpsdiag">Oczekiwanie na dane GPS...</p>
+ <h3>Diagnostyka GSM</h3>
+ <p id="gsmdiag">Oczekiwanie na modem GSM...</p>
  <h3>Numery alarmowe SMS</h3>
  <form id="contact-form">
   <input id="contact-number" type="tel" placeholder="+48123456789"
@@ -58,13 +62,22 @@ async function tick(){
  const st=document.getElementById('st');
  st.className=j.alarm?'bad':'ok';
  st.textContent=j.state+'  |  '+j.kind;
+ const smsResult=document.getElementById('sms-result');
+ smsResult.textContent=j.sms_result;
+ smsResult.className=j.sms_result.includes('NIE WYSŁANO')||
+  j.sms_result.includes('NIEUDANA')?'bad':
+  (j.sms_result.includes('pozostale nie')||
+   j.sms_result.startsWith('Nie wysylano')||
+   j.sms_result.startsWith('PROBA 2/2')?'warn':'ok');
  document.getElementById('m').textContent=
   'g='+j.g.toFixed(2)+'  roll='+j.roll.toFixed(1)+'  pitch='+j.pitch.toFixed(1)+
-  '  odliczanie='+j.countdown+'s\n'+j.gps;
+  '  yaw='+j.yaw.toFixed(1)+'  odliczanie='+j.countdown+'s\n'+j.gps;
  document.getElementById('temperature').textContent=j.temperature_valid
   ? j.temperature_c.toFixed(1)+' °C'
   : 'Brak odczytu z DHT11';
  document.getElementById('gpsdiag').textContent=j.gps_diag;
+ document.getElementById('gsmdiag').textContent=
+  j.gsm_diag+' | zasieg '+j.gsm_bars+'/4 | satelity GPS '+j.gps_satellites;
  document.getElementById('log').textContent=j.log||'';
 }
 async function loadContacts(){
@@ -193,17 +206,25 @@ void demoWebLoop() {
 static const char* stateName(SystemState s) {
   switch (s) {
     case SystemState::Boot:
-      return "BOOT";
+      return "URUCHAMIANIE";
     case SystemState::Ready:
-      return "GOTOWY";
+      return "MONITORING";
     case SystemState::Countdown:
-      return "ODLICZANIE";
+      return "ALARM - ODLICZANIE";
     case SystemState::Sending:
-      return "WYSYLKA";
+      return "PROBA 1/2 - WYSYŁANIE SMS";
+    case SystemState::RetryWait:
+      return "PROBA 1 NIEUDANA";
+    case SystemState::Retrying:
+      return "PROBA 2/2 - PONAWIAM";
     case SystemState::Sent:
-      return "WYSŁANO";
+      return "WYSŁANO SMS";
+    case SystemState::SendPartial:
+      return "CZĘŚCIOWO WYSŁANO SMS";
+    case SystemState::SendFailed:
+      return "NIE WYSŁANO SMS";
     case SystemState::Fault:
-      return "BLAD";
+      return "BŁĄD CZUJNIKA";
   }
   return "?";
 }
@@ -213,14 +234,19 @@ void demoWebPush(SystemState state,
                  float g,
                  float roll,
                  float pitch,
+                 float yaw,
                  const String& gps,
                  const String& gpsDiagnostics,
+                 const String& gsmDiagnostics,
+                 uint8_t gpsSatellites,
+                 uint8_t gsmSignalBars,
                  float temperatureC,
                  bool temperatureValid,
                  int countdown_s,
                  const String& logLine) {
   if (logLine.length() > 0) {
     event_log_ = logLine + "\n" + event_log_;
+    sms_result_ = logLine;
     if (event_log_.length() > 1200) {
       event_log_.remove(1200);
     }
@@ -237,6 +263,8 @@ void demoWebPush(SystemState state,
   json_state_ += String(roll, 2);
   json_state_ += ",\"pitch\":";
   json_state_ += String(pitch, 2);
+  json_state_ += ",\"yaw\":";
+  json_state_ += String(yaw, 2);
   json_state_ += ",\"countdown\":";
   json_state_ += String(countdown_s);
   json_state_ += ",\"alarm\":";
@@ -252,7 +280,20 @@ void demoWebPush(SystemState state,
   String gpsDiagEsc = gpsDiagnostics;
   gpsDiagEsc.replace("\"", "'");
   json_state_ += gpsDiagEsc;
-  json_state_ += "\",\"temperature_valid\":";
+  json_state_ += "\",\"gsm_diag\":\"";
+  String gsmDiagEsc = gsmDiagnostics;
+  gsmDiagEsc.replace("\"", "'");
+  json_state_ += gsmDiagEsc;
+  json_state_ += "\",\"gps_satellites\":";
+  json_state_ += String(gpsSatellites);
+  json_state_ += ",\"gsm_bars\":";
+  json_state_ += String(gsmSignalBars);
+  json_state_ += ",\"sms_result\":\"";
+  String smsResultEsc = sms_result_;
+  smsResultEsc.replace("\"", "'");
+  json_state_ += smsResultEsc;
+  json_state_ += "\"";
+  json_state_ += ",\"temperature_valid\":";
   json_state_ += temperatureValid ? "true" : "false";
   json_state_ += ",\"temperature_c\":";
   if (temperatureValid) {
