@@ -30,6 +30,8 @@ static uint32_t last_sample = 0;
 static uint32_t last_ui = 0;
 static uint32_t last_contacts_refresh = 0;
 static uint32_t last_gsm_refresh = 0;
+static uint32_t startup_self_test_started_ms = 0;
+static constexpr uint32_t STARTUP_SELF_TEST_DISPLAY_MS = 5000;
 static uint8_t sms_sent_total = 0;
 static uint8_t menu_page = 0;
 static bool imu_ok = false;
@@ -171,6 +173,7 @@ void setup() {
   emergency.begin();
   demoWebBegin();
   logWebEvent("System gotowy do monitorowania");
+  startup_self_test_started_ms = millis();
 
   if (!imu_ok) {
     Serial.println("MPU-6050 niedostepny lub blad kalibracji");
@@ -346,10 +349,31 @@ void loop() {
     if (!imu_ok && st == SystemState::Ready) {
       st = SystemState::Fault;
     }
-    ui.show(st, crash.accelG(), crash.rollDeg(), crash.pitchDeg(),
-            crash.yawDeg(), gps.coordsText(), gps.satellites(), gsm.signalBars(),
-            gsm.statusText(), gps.clockText(), sms_numbers, sms_numbers_available,
-            emergency.countdownSeconds(), menu_page, getDisplayMenuData());
+    if (menu_page == 0 &&
+        (st == SystemState::Ready || st == SystemState::Fault) &&
+        now - startup_self_test_started_ms < STARTUP_SELF_TEST_DISPLAY_MS) {
+      StartupSelfTestData test;
+      test.imuReady = imu_ok;
+      test.temperatureReadAttempted = cabin.temperatureReadAttempted();
+      test.temperatureValid = cabin.tempValid();
+      test.gasRaw = cabin.gasRaw();
+      test.gasWarmedUp = cabin.gasWarmedUp();
+      test.gpsDataReceived = gps.dataReceived();
+      test.gpsFix = gps.hasFix();
+      test.gsmReady = gsm.ready();
+      test.simReady = gsm.simReady();
+      test.networkRegistered = gsm.networkRegistered();
+      test.gsmSignalBars = gsm.signalBars();
+      test.smsNumbersAvailable = sms_numbers_available;
+      test.smsNumbersCount = static_cast<uint8_t>(sms_numbers.size());
+      ui.showStartupSelfTest(test);
+    } else {
+      ui.show(st, crash.accelG(), crash.rollDeg(), crash.pitchDeg(),
+              crash.yawDeg(), gps.coordsText(), gps.satellites(),
+              gsm.signalBars(), gsm.statusText(), gps.clockText(), sms_numbers,
+              sms_numbers_available, emergency.countdownSeconds(), menu_page,
+              getDisplayMenuData());
+    }
     demoWebPush(st, emergency.kind(), crash.accelG(), crash.rollDeg(),
                 crash.pitchDeg(), crash.yawDeg(), gps.coordsText(), gps.mapsUrl(),
                 gps.diagnostics(), gsm.statusText(), gps.satellites(), gsm.signalBars(),

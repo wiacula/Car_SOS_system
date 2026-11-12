@@ -39,6 +39,8 @@ bool GpsModule::hasFix() const {
   return gps_.location.isValid() && gps_.location.age() < 5000;
 }
 
+bool GpsModule::dataReceived() { return gps_.charsProcessed() > 0; }
+
 bool GpsModule::timeSynced() {
   return gps_.date.isValid() && gps_.time.isValid() &&
          gps_.date.age() < 5000 && gps_.time.age() < 5000;

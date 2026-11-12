@@ -19,6 +19,7 @@ CrashKind CabinSensors::update() {
   bool new_sample = false;
   if (now - last_dht_ms_ >= DHT_PERIOD_MS) {
     last_dht_ms_ = now;
+    temperature_read_attempted_ = true;
     const float t = dht.readTemperature();
     const float h = dht.readHumidity();
     if (!isnan(t) && !isnan(h)) {

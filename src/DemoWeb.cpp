@@ -4,6 +4,7 @@
 
 #include <WebServer.h>
 #include <WiFi.h>
+#include <Preferences.h>
 #include <vector>
 
 static WebServer server(80);
@@ -17,9 +18,15 @@ static String json_state_ =
     "\"temperature_valid\":false,\"temperature_c\":null,"
     "\"clock\":\"T+00:00:00\",\"clock_synced\":false,\"log\":\"\"}";
 static constexpr uint8_t EVENT_LOG_CAPACITY = 24;
+static constexpr uint8_t EVENT_LOG_STORAGE_VERSION = 1;
+static const char* EVENT_LOG_NVS_NAMESPACE = "soslog";
+static const char* EVENT_LOG_NVS_META_KEY = "meta";
 static String event_entries_[EVENT_LOG_CAPACITY];
 static uint8_t event_count_ = 0;
 static uint8_t next_event_ = 0;
+static Preferences event_log_preferences_;
+static bool event_log_load_attempted_ = false;
+static bool event_log_storage_ready_ = false;
 static String sms_result_ = "Nie wysylano jeszcze SMS";
 static String clock_text_ = "T+00:00:00";
 static bool clock_synced_ = false;
@@ -331,18 +338,88 @@ void demoWebLoop() {
   server.handleClient();
 }
 
+static void eventLogSlotKey(uint8_t index, char key[4]) {
+  key[0] = 'e';
+  key[1] = '0' + index / 10;
+  key[2] = '0' + index % 10;
+  key[3] = '\0';
+}
+
+static void loadEventLog() {
+  if (event_log_load_attempted_) {
+    return;
+  }
+  event_log_load_attempted_ = true;
+  if (!event_log_preferences_.begin(EVENT_LOG_NVS_NAMESPACE, false)) {
+    Serial.println("Nie mozna otworzyc pamieci NVS dziennika zdarzen");
+    return;
+  }
+  event_log_storage_ready_ = true;
+
+  if (!event_log_preferences_.isKey(EVENT_LOG_NVS_META_KEY)) {
+    return;
+  }
+
+  uint8_t metadata[3] = {};
+  const size_t metadata_length =
+      event_log_preferences_.getBytes(EVENT_LOG_NVS_META_KEY, metadata,
+                                      sizeof(metadata));
+  if (metadata_length != sizeof(metadata) ||
+      metadata[0] != EVENT_LOG_STORAGE_VERSION ||
+      metadata[1] > EVENT_LOG_CAPACITY || metadata[2] >= EVENT_LOG_CAPACITY) {
+    Serial.println("Nieprawidlowy dziennik zdarzen w NVS; rozpoczynam nowy");
+    return;
+  }
+
+  event_count_ = metadata[1];
+  next_event_ = metadata[2];
+  for (uint8_t i = 0; i < EVENT_LOG_CAPACITY; ++i) {
+    char key[4];
+    eventLogSlotKey(i, key);
+    event_entries_[i] = event_log_preferences_.getString(key, "");
+  }
+}
+
+static void persistEvent(uint8_t slot) {
+  if (!event_log_storage_ready_) {
+    return;
+  }
+
+  char key[4];
+  eventLogSlotKey(slot, key);
+  if (event_log_preferences_.putString(key, event_entries_[slot]) == 0) {
+    Serial.println("Nie mozna zapisac wpisu dziennika zdarzen w NVS");
+    event_log_preferences_.end();
+    event_log_storage_ready_ = false;
+    return;
+  }
+
+  const uint8_t metadata[] = {EVENT_LOG_STORAGE_VERSION, event_count_,
+                              next_event_};
+  if (event_log_preferences_.putBytes(EVENT_LOG_NVS_META_KEY, metadata,
+                                      sizeof(metadata)) != sizeof(metadata)) {
+    Serial.println("Nie mozna zapisac metadanych dziennika zdarzen w NVS");
+    event_log_preferences_.end();
+    event_log_storage_ready_ = false;
+  }
+}
+
 static void appendEvent(const String& message) {
   if (message.length() == 0) {
     return;
   }
-  event_entries_[next_event_] = clock_text_ + " | " + message;
+  loadEventLog();
+  const uint8_t slot = next_event_;
+  event_entries_[slot] = clock_text_ + " | " + message;
   next_event_ = (next_event_ + 1) % EVENT_LOG_CAPACITY;
   if (event_count_ < EVENT_LOG_CAPACITY) {
     ++event_count_;
   }
+  persistEvent(slot);
 }
 
 static String eventLogText() {
+  loadEventLog();
   String log;
   for (uint8_t i = 0; i < event_count_; ++i) {
     const uint8_t index =

@@ -25,10 +25,27 @@ struct DisplayMenuData {
   bool networkRegistered = false;
 };
 
+struct StartupSelfTestData {
+  bool imuReady = false;
+  bool temperatureReadAttempted = false;
+  bool temperatureValid = false;
+  int gasRaw = 0;
+  bool gasWarmedUp = false;
+  bool gpsDataReceived = false;
+  bool gpsFix = false;
+  bool gsmReady = false;
+  bool simReady = false;
+  bool networkRegistered = false;
+  uint8_t gsmSignalBars = 0;
+  bool smsNumbersAvailable = false;
+  uint8_t smsNumbersCount = 0;
+};
+
 class DisplayUi {
  public:
   bool begin();
   void showStartupAnimation(uint8_t frame);
+  void showStartupSelfTest(const StartupSelfTestData& data);
   void showCalibrationMessage(uint8_t progress, bool sampling);
   void show(SystemState state,
             float g,

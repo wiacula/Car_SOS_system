@@ -42,6 +42,68 @@ void DisplayUi::showStartupAnimation(uint8_t frame) {
   oled_.display();
 }
 
+void DisplayUi::showStartupSelfTest(const StartupSelfTestData& data) {
+  if (!ready_) {
+    return;
+  }
+  oled_.clearDisplay();
+  oled_.setTextColor(SSD1306_WHITE);
+  oled_.setTextSize(1);
+  oled_.setCursor(13, 1);
+  oled_.print("AUTOTEST STARTOWY");
+  oled_.drawFastHLine(2, 9, 124, SSD1306_WHITE);
+
+  oled_.setCursor(3, 12);
+  oled_.print("MPU: ");
+  oled_.print(data.imuReady ? "OK" : "BLAD");
+  oled_.setCursor(68, 12);
+  oled_.print("DHT: ");
+  oled_.print(data.temperatureValid
+                  ? "OK"
+                  : (data.temperatureReadAttempted ? "BLAD" : "CZEKA"));
+
+  oled_.setCursor(3, 21);
+  oled_.print("MQ2: ");
+  oled_.print(data.gasRaw);
+  oled_.setCursor(72, 21);
+  oled_.print(data.gasWarmedUp ? "GOTOWY" : "GRZANIE");
+
+  oled_.setCursor(3, 30);
+  oled_.print("GPS: ");
+  oled_.print(data.gpsFix ? "FIX OK"
+                          : (data.gpsDataReceived ? "SZUKA FIX"
+                                                  : "BRAK DANYCH"));
+
+  oled_.setCursor(3, 39);
+  if (!data.gsmReady) {
+    oled_.print("GSM: BLAD MODULU");
+  } else if (!data.simReady) {
+    oled_.print("GSM: BLAD SIM / PIN");
+  } else if (!data.networkRegistered) {
+    oled_.print("GSM: SZUKA SIECI");
+  } else {
+    oled_.print("GSM: OK ");
+    oled_.print(data.gsmSignalBars);
+    oled_.print("/4");
+  }
+
+  oled_.setCursor(3, 48);
+  if (!data.smsNumbersAvailable) {
+    oled_.print("NUMERY: BLAD PAMIECI");
+  } else if (data.smsNumbersCount == 0) {
+    oled_.print("NUMERY: BRAK");
+  } else {
+    oled_.print("NUMERY: OK (");
+    oled_.print(data.smsNumbersCount);
+    oled_.print(")");
+  }
+
+  oled_.drawFastHLine(2, 55, 124, SSD1306_WHITE);
+  oled_.setCursor(3, 57);
+  oled_.print("MONITORING AKTYWNY");
+  oled_.display();
+}
+
 void DisplayUi::showCalibrationMessage(uint8_t progress, bool sampling) {
   if (!ready_) {
     return;

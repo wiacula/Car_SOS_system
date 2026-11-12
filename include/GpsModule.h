@@ -9,6 +9,7 @@ class GpsModule {
   bool begin();
   void poll();
   bool hasFix() const;
+  bool dataReceived();
   bool timeSynced();
   String timestampText();
   String clockText();
