@@ -10,6 +10,10 @@ Firmware for ESP32 DevKit using PlatformIO and Arduino.
 4. Connect to the `SOS-AUTO` Wi-Fi network and open `http://192.168.4.1`.
 5. Add the real SMS recipient numbers in the web panel before testing alerts.
 
+The dashboard displays the latest GPS position on Google Maps after a GPS fix.
+The map requires internet access from the device viewing the dashboard; the
+ESP32 access point itself does not provide internet.
+
 Keep the ESP32 and MPU-6050 still during the startup calibration screen:
 the sensor settles for three seconds, then the accelerometer and gyroscope
 offsets are sampled for about one second. The startup orientation becomes

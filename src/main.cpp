@@ -282,7 +282,7 @@ void loop() {
               sms_numbers_available, 0, 0, getDisplayMenuData());
       demoWebPush(SystemState::Sending, emergency.kind(), crash.accelG(),
                   crash.rollDeg(), crash.pitchDeg(), crash.yawDeg(), gps.coordsText(),
-                  gps.diagnostics(), gsm.statusText(), gps.satellites(),
+                  gps.mapsUrl(), gps.diagnostics(), gsm.statusText(), gps.satellites(),
                   gsm.signalBars(), cabin.tempC(), cabin.tempValid(), 0,
                   "PROBA 1/2: wysylam SMS");
     } else {
@@ -292,7 +292,7 @@ void loop() {
               sms_numbers_available, 0, 0, getDisplayMenuData());
       demoWebPush(SystemState::Retrying, emergency.kind(), crash.accelG(),
                   crash.rollDeg(), crash.pitchDeg(), crash.yawDeg(), gps.coordsText(),
-                  gps.diagnostics(), gsm.statusText(), gps.satellites(),
+                  gps.mapsUrl(), gps.diagnostics(), gsm.statusText(), gps.satellites(),
                   gsm.signalBars(), cabin.tempC(), cabin.tempValid(), 0,
                   "PROBA 2/2: ponawiam wysylke SMS");
       if (!gsm_ok) {
@@ -335,7 +335,7 @@ void loop() {
     }
     demoWebPush(emergency.state(), emergency.kind(), crash.accelG(),
                 crash.rollDeg(), crash.pitchDeg(), crash.yawDeg(), gps.coordsText(),
-                gps.diagnostics(), gsm.statusText(), gps.satellites(),
+                gps.mapsUrl(), gps.diagnostics(), gsm.statusText(), gps.satellites(),
                 gsm.signalBars(), cabin.tempC(), cabin.tempValid(),
                 0, extra_log);
   }
@@ -351,8 +351,8 @@ void loop() {
             gsm.statusText(), gps.clockText(), sms_numbers, sms_numbers_available,
             emergency.countdownSeconds(), menu_page, getDisplayMenuData());
     demoWebPush(st, emergency.kind(), crash.accelG(), crash.rollDeg(),
-                crash.pitchDeg(), crash.yawDeg(), gps.coordsText(), gps.diagnostics(),
-                gsm.statusText(), gps.satellites(), gsm.signalBars(),
+                crash.pitchDeg(), crash.yawDeg(), gps.coordsText(), gps.mapsUrl(),
+                gps.diagnostics(), gsm.statusText(), gps.satellites(), gsm.signalBars(),
                 cabin.tempC(), cabin.tempValid(),
                 emergency.countdownSeconds(), "");
     digitalWrite(PIN_LED_OK, gps.hasFix() ? HIGH : ((now / 400) % 2));

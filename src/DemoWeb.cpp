@@ -10,7 +10,8 @@ static WebServer server(80);
 static String json_state_ =
     "{\"state\":\"URUCHAMIANIE\",\"kind\":\"BRAK\",\"g\":0,\"roll\":0,"
     "\"pitch\":0,\"yaw\":0,\"countdown\":0,\"alarm\":false,"
-    "\"gps\":\"GPS: BRAK FIX\",\"gps_diag\":\"Oczekiwanie na dane GPS\","
+    "\"gps\":\"GPS: BRAK FIX\",\"gps_map_url\":\"\","
+    "\"gps_diag\":\"Oczekiwanie na dane GPS\","
     "\"gsm_diag\":\"Oczekiwanie na modem GSM\",\"gps_satellites\":0,"
     "\"gsm_bars\":0,\"sms_result\":\"Nie wysylano jeszcze SMS\","
     "\"temperature_valid\":false,\"temperature_c\":null,"
@@ -56,6 +57,13 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
  .detail{font-size:14px;color:#56647b;line-height:1.5;margin:8px 0 0;overflow-wrap:anywhere}
  .section-title{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
  .section-title h3{margin-bottom:14px}
+ .map-link{display:none;color:#1769aa;font-weight:650}
+ .map-link.visible{display:inline}
+ .map-container{display:none}
+ .map-container.visible{display:block}
+ .map-frame{display:block;width:100%;height:360px;border:0;border-radius:12px}
+ .map-placeholder{display:none;min-height:170px;place-items:center;text-align:center;padding:20px;background:#f2f5fa;border-radius:12px;color:#62718b}
+ .map-placeholder.visible{display:grid}
  .section-title small{color:#6c7890}
  form{display:flex;gap:8px;flex-wrap:wrap}
  input{flex:1;min-width:190px;padding:11px 12px;border:1px solid #cbd4e2;border-radius:9px;font:inherit}
@@ -73,7 +81,7 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
  .event-time{font:12px ui-monospace,monospace;color:#53657f;min-width:150px}
  .empty{color:#718096}
  #connection{color:#b42332}
- @media(max-width:640px){body{padding:14px}.grid{grid-template-columns:1fr}.card{padding:16px}header{align-items:flex-start;flex-direction:column}.clock{text-align:left}.event-log li{display:block}.event-time{display:block;margin-bottom:4px}}
+ @media(max-width:640px){body{padding:14px}.grid{grid-template-columns:1fr}.card{padding:16px}header{align-items:flex-start;flex-direction:column}.clock{text-align:left}.event-log li{display:block}.event-time{display:block;margin-bottom:4px}.map-frame{height:280px}}
 </style>
 </head>
 <body>
@@ -97,6 +105,12 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
   <article class="card metric"><h3>SIM / GSM</h3><div id="gsmdiag" class="value">Oczekiwanie</div><p id="gsm-meta" class="detail"></p></article>
  </section>
  <section class="card">
+  <div class="section-title"><h3>Aktualna pozycja</h3><a id="map-link" class="map-link" target="_blank" rel="noopener noreferrer">Otworz w Google Maps</a></div>
+  <div id="map-placeholder" class="map-placeholder visible">Oczekiwanie na pozycje GPS z FIX.</div>
+  <div id="map-container" class="map-container"><iframe id="map-frame" class="map-frame" title="Aktualna pozycja GPS na Google Maps" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>
+  <p class="detail">Mapa wymaga dostepu do internetu. Wspolrzedne sa przekazywane do Google Maps.</p>
+ </section>
+ <section class="card">
   <div class="section-title"><h3>Numery alarmowe SMS</h3><small>Maksymalnie 10 numerow</small></div>
   <form id="contact-form">
    <input id="contact-number" type="tel" placeholder="+48123456789" pattern="\+[0-9]{7,15}" required/>
@@ -116,6 +130,7 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
 </main>
 <script>
 const el=id=>document.getElementById(id);
+let lastMapRefresh=0;
 async function tick(){
  try{
   const r=await fetch('/state',{cache:'no-store'});
@@ -139,6 +154,34 @@ async function tick(){
   el('gps').textContent=j.gps;
   el('gps-meta').textContent='Satelity: '+j.gps_satellites;
   el('gpsdiag').textContent=j.gps_diag;
+  const mapFrame=el('map-frame');
+  const mapContainer=el('map-container');
+  const mapPlaceholder=el('map-placeholder');
+  const mapLink=el('map-link');
+  if(j.gps_map_url){
+   const embedUrl=new URL(j.gps_map_url);
+   embedUrl.pathname='/maps';
+   embedUrl.searchParams.set('z','15');
+   embedUrl.searchParams.set('output','embed');
+   const now=Date.now();
+   if(!mapFrame.dataset.mapUrl||
+      (j.gps_map_url!==mapFrame.dataset.mapUrl&&now-lastMapRefresh>=10000)){
+    mapFrame.src=embedUrl.toString();
+    mapFrame.dataset.mapUrl=j.gps_map_url;
+    lastMapRefresh=now;
+   }
+   mapLink.href=j.gps_map_url;
+   mapLink.classList.add('visible');
+   mapContainer.classList.add('visible');
+   mapPlaceholder.classList.remove('visible');
+  }else{
+   mapFrame.removeAttribute('src');
+   mapFrame.dataset.mapUrl='';
+   mapLink.removeAttribute('href');
+   mapLink.classList.remove('visible');
+   mapContainer.classList.remove('visible');
+   mapPlaceholder.classList.add('visible');
+  }
   el('gsmdiag').textContent=j.gsm_diag;
   el('gsm-meta').textContent='Zasieg: '+j.gsm_bars+'/4';
   const log=el('log');
@@ -389,6 +432,7 @@ void demoWebPush(SystemState state,
                  float pitch,
                  float yaw,
                  const String& gps,
+                 const String& gpsMapsUrl,
                  const String& gpsDiagnostics,
                  const String& gsmDiagnostics,
                  uint8_t gpsSatellites,
@@ -424,6 +468,8 @@ void demoWebPush(SystemState state,
                      : "true";
   json_state_ += ",\"gps\":\"";
   json_state_ += jsonEscape(gps);
+  json_state_ += "\",\"gps_map_url\":\"";
+  json_state_ += jsonEscape(gpsMapsUrl);
   json_state_ += "\",\"gps_diag\":\"";
   json_state_ += jsonEscape(gpsDiagnostics);
   json_state_ += "\",\"gsm_diag\":\"";
