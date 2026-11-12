@@ -39,6 +39,7 @@ class DisplayUi {
             uint8_t gpsSatellites,
             uint8_t gsmSignalBars,
             const String& gsmStatus,
+            const String& clockText,
             const std::vector<String>& smsNumbers,
             bool smsNumbersAvailable,
             int countdown_s,

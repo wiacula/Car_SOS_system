@@ -83,6 +83,7 @@ void DisplayUi::show(SystemState state,
                     uint8_t gpsSatellites,
                     uint8_t gsmSignalBars,
                     const String& gsmStatus,
+                    const String& clockText,
                     const std::vector<String>& smsNumbers,
                     bool smsNumbersAvailable,
                     int countdown_s,
@@ -100,25 +101,22 @@ void DisplayUi::show(SystemState state,
   oled_.clearDisplay();
   oled_.setTextSize(1);
   oled_.setTextColor(SSD1306_WHITE);
-  oled_.setCursor(55, 1);
+  oled_.setCursor(2, 1);
+  oled_.print(clockText);
+  oled_.setCursor(38, 1);
   oled_.print("GSM");
-  if (gsmSignalBars == 0) {
-    oled_.setCursor(78, 1);
-    oled_.print("X");
-  } else {
-    for (uint8_t i = 0; i < 4; ++i) {
-      const int height = 2 + i * 2;
-      const int x = 77 + i * 4;
-      if (i < gsmSignalBars) {
-        oled_.fillRect(x, 8 - height, 2, height, SSD1306_WHITE);
-      } else {
-        oled_.drawRect(x, 8 - height, 2, height, SSD1306_WHITE);
-      }
+  for (uint8_t i = 0; i < 4; ++i) {
+    const int height = 3 + i;
+    const int x = 58 + i * 5;
+    if (i < gsmSignalBars) {
+      oled_.fillRect(x, 8 - height, 4, height, SSD1306_WHITE);
+    } else {
+      oled_.drawRect(x, 8 - height, 4, height, SSD1306_WHITE);
     }
   }
-  oled_.setCursor(96, 1);
+  oled_.setCursor(79, 1);
   oled_.print("SAT");
-  oled_.setCursor(116, 1);
+  oled_.setCursor(111, 1);
   if (gpsSatellites < 10) {
     oled_.print("0");
   }
@@ -354,18 +352,13 @@ void DisplayUi::showMenu(uint8_t page,
     oled_.print(gsmStatus);
     oled_.setCursor(3, 43);
     oled_.print("ZASIEG");
-    if (gsmSignalBars == 0) {
-      oled_.setCursor(58, 43);
-      oled_.print("X");
-    } else {
-      for (uint8_t i = 0; i < 4; ++i) {
-        const int height = 3 + i * 2;
-        const int x = 56 + i * 7;
-        if (i < gsmSignalBars) {
-          oled_.fillRect(x, 53 - height, 4, height, SSD1306_WHITE);
-        } else {
-          oled_.drawRect(x, 53 - height, 4, height, SSD1306_WHITE);
-        }
+    for (uint8_t i = 0; i < 4; ++i) {
+      const int height = 3 + i * 2;
+      const int x = 56 + i * 7;
+      if (i < gsmSignalBars) {
+        oled_.fillRect(x, 53 - height, 4, height, SSD1306_WHITE);
+      } else {
+        oled_.drawRect(x, 53 - height, 4, height, SSD1306_WHITE);
       }
     }
   }

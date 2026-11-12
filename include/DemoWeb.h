@@ -5,6 +5,8 @@
 
 void demoWebBegin();
 void demoWebLoop();
+void demoWebSetClock(const String& timestamp, bool gpsTimeSynced);
+void demoWebLog(const String& message);
 void demoWebPush(SystemState state,
                  CrashKind kind,
                  float g,

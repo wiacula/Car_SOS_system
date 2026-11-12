@@ -26,6 +26,9 @@ static const uint32_t MQ2_WARMUP_MS = 90000;
 static const float TEMP_ALARM_C = 40.0f;
 static const int TEMP_HIT_COUNT = 3;
 static const uint32_t DHT_PERIOD_MS = 2000;
+// Adjust against a trusted thermometer; this offset applies to DHT readings.
+static const float TEMP_CALIBRATION_OFFSET_C = 0.0f;
+static const char* LOCAL_TIMEZONE = "CET-1CEST,M3.5.0/2,M10.5.0/3";
 
 static const uint32_t GPS_BAUD = 9600;
 static const uint32_t GSM_BAUD = 9600;

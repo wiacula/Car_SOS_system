@@ -36,6 +36,21 @@ static bool imu_ok = false;
 static bool gsm_ok = false;
 static bool sms_numbers_available = false;
 static std::vector<String> sms_numbers;
+static String last_gsm_status;
+static bool gps_was_fixed = false;
+
+static void logWebEvent(const String& message) {
+  demoWebSetClock(gps.timestampText(), gps.timeSynced());
+  demoWebLog(message);
+}
+
+static void logGsmStatusIfChanged() {
+  const String status = gsm.statusText();
+  if (status != last_gsm_status) {
+    last_gsm_status = status;
+    logWebEvent(status);
+  }
+}
 
 static void showCalibrationProgress(uint8_t progress) {
   ui.showCalibrationMessage(progress, true);
@@ -118,6 +133,7 @@ void setup() {
   Wire.begin(PIN_SDA, PIN_SCL);
 
   ui.begin();
+  logWebEvent("Uruchomienie systemu");
   for (uint8_t frame = 0; frame < 24; ++frame) {
     ui.showStartupAnimation(frame);
     delay(70);
@@ -127,7 +143,8 @@ void setup() {
     Serial.println("Nie mozna odczytac listy numerow SMS");
   }
   last_contacts_refresh = millis();
-  imu_ok = crash.begin();
+  const bool imu_started = crash.begin();
+  imu_ok = imu_started;
   if (imu_ok) {
     Serial.println("MPU-6050: stabilizacja przed kalibracja...");
     const uint32_t stabilizationStart = millis();
@@ -139,17 +156,24 @@ void setup() {
       delay(80);
     }
     imu_ok = crash.calibrate(showCalibrationProgress);
+    logWebEvent(imu_ok ? "Kalibracja MPU-6050 zakonczona"
+                       : "Blad kalibracji MPU-6050");
+  }
+  if (!imu_started) {
+    logWebEvent("MPU-6050 niedostepny");
   }
   cabin.begin();
   gps.begin();
   gsm_ok = gsm.begin();
   gsm.refreshStatus();
   last_gsm_refresh = millis();
+  logGsmStatusIfChanged();
   emergency.begin();
   demoWebBegin();
+  logWebEvent("System gotowy do monitorowania");
 
   if (!imu_ok) {
-    Serial.println("MPU-6050 niedostepny");
+    Serial.println("MPU-6050 niedostepny lub blad kalibracji");
   }
   if (!gsm_ok) {
     Serial.println("GSM niedostepny — tryb DEMO / log Serial");
@@ -159,6 +183,12 @@ void setup() {
 
 void loop() {
   gps.poll();
+  demoWebSetClock(gps.timestampText(), gps.timeSynced());
+  const bool gps_fixed = gps.hasFix();
+  if (gps_fixed != gps_was_fixed) {
+    logWebEvent(gps_fixed ? "GPS: uzyskano FIX" : "GPS: utracono FIX");
+    gps_was_fixed = gps_fixed;
+  }
   demoWebLoop();
   emergency.tick();
 
@@ -168,18 +198,26 @@ void loop() {
   if (buttonPressed(PIN_BTN_SOS, &last_sos_btn) || sos_web) {
     sos_web = false;
     emergency.onSos();
+    logWebEvent("Reczne SOS - odliczanie uruchomione");
     menu_page = 0;
     Serial.println("SOS reczny");
   }
   const bool cancel_button_pressed =
       buttonPressed(PIN_BTN_CANCEL, &last_cancel_btn);
   if (cancel_button_pressed || cancel_web) {
+    const SystemState state_before_cancel = emergency.state();
     if (cancel_button_pressed && !cancel_web &&
         emergency.state() == SystemState::Ready) {
       menu_page = (menu_page + 1) % 5;
     } else {
       menu_page = 0;
       emergency.onCancel();
+    }
+    if (state_before_cancel != SystemState::Ready &&
+        emergency.state() == SystemState::Ready) {
+      logWebEvent(state_before_cancel == SystemState::Countdown
+                      ? "Odliczanie alarmu anulowane"
+                      : "Alarm potwierdzony / zresetowany");
     }
     cancel_web = false;
     if (!cancel_button_pressed || emergency.state() != SystemState::Ready) {
@@ -195,6 +233,7 @@ void loop() {
   if (gsm_ok && now - last_gsm_refresh >= 10000) {
     last_gsm_refresh = now;
     gsm.refreshStatus();
+    logGsmStatusIfChanged();
   }
 
   if (now - last_contacts_refresh >= 1000) {
@@ -224,6 +263,9 @@ void loop() {
     if (k != CrashKind::None) {
       Serial.print("Detekcja: ");
       Serial.println(crashKindName(k));
+      String event = "Detekcja: ";
+      event += crashKindName(k);
+      logWebEvent(event);
       emergency.onCrash(k);
       menu_page = 0;
     }
@@ -236,7 +278,7 @@ void loop() {
       sms_sent_total = 0;
       ui.show(SystemState::Sending, crash.accelG(), crash.rollDeg(),
               crash.pitchDeg(), crash.yawDeg(), gps.coordsText(), gps.satellites(),
-              gsm.signalBars(), gsm.statusText(), sms_numbers,
+              gsm.signalBars(), gsm.statusText(), gps.clockText(), sms_numbers,
               sms_numbers_available, 0, 0, getDisplayMenuData());
       demoWebPush(SystemState::Sending, emergency.kind(), crash.accelG(),
                   crash.rollDeg(), crash.pitchDeg(), crash.yawDeg(), gps.coordsText(),
@@ -246,7 +288,7 @@ void loop() {
     } else {
       ui.show(SystemState::Retrying, crash.accelG(), crash.rollDeg(),
               crash.pitchDeg(), crash.yawDeg(), gps.coordsText(), gps.satellites(),
-              gsm.signalBars(), gsm.statusText(), sms_numbers,
+              gsm.signalBars(), gsm.statusText(), gps.clockText(), sms_numbers,
               sms_numbers_available, 0, 0, getDisplayMenuData());
       demoWebPush(SystemState::Retrying, emergency.kind(), crash.accelG(),
                   crash.rollDeg(), crash.pitchDeg(), crash.yawDeg(), gps.coordsText(),
@@ -259,6 +301,7 @@ void loop() {
       if (gsm_ok) {
         gsm.refreshStatus();
         last_gsm_refresh = millis();
+        logGsmStatusIfChanged();
       }
 
     }
@@ -305,7 +348,7 @@ void loop() {
     }
     ui.show(st, crash.accelG(), crash.rollDeg(), crash.pitchDeg(),
             crash.yawDeg(), gps.coordsText(), gps.satellites(), gsm.signalBars(),
-            gsm.statusText(), sms_numbers, sms_numbers_available,
+            gsm.statusText(), gps.clockText(), sms_numbers, sms_numbers_available,
             emergency.countdownSeconds(), menu_page, getDisplayMenuData());
     demoWebPush(st, emergency.kind(), crash.accelG(), crash.rollDeg(),
                 crash.pitchDeg(), crash.yawDeg(), gps.coordsText(), gps.diagnostics(),

@@ -22,7 +22,7 @@ CrashKind CabinSensors::update() {
     const float t = dht.readTemperature();
     const float h = dht.readHumidity();
     if (!isnan(t) && !isnan(h)) {
-      temp_c_ = t;
+      temp_c_ = t + TEMP_CALIBRATION_OFFSET_C;
       humidity_ = h;
       temp_valid_ = true;
       new_sample = true;

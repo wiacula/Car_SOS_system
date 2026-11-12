@@ -9,6 +9,9 @@ class GpsModule {
   bool begin();
   void poll();
   bool hasFix() const;
+  bool timeSynced();
+  String timestampText();
+  String clockText();
   String diagnostics();
   double lat();
   double lon();
@@ -19,4 +22,5 @@ class GpsModule {
  private:
   TinyGPSPlus gps_;
   uint32_t last_rx_ms_ = 0;
+  bool timezone_ready_ = false;
 };
