@@ -19,6 +19,8 @@ void EmergencyManager::onCrash(CrashKind kind) {
   }
   kind_ = kind;
   state_ = SystemState::Countdown;
+  countdown_started_ms_ = millis();
+  last_beep_ = countdown_started_ms_;
   countdown_until_ = millis() + COUNTDOWN_MS;
 }
 
@@ -38,6 +40,8 @@ void EmergencyManager::onSos() {
     return;
   }
   state_ = SystemState::Countdown;
+  countdown_started_ms_ = millis();
+  last_beep_ = countdown_started_ms_;
   countdown_until_ = millis() + COUNTDOWN_MS;
 }
 
@@ -76,8 +80,9 @@ void EmergencyManager::tick() {
     return;
   }
 
-  digitalWrite(PIN_LED_ALARM, HIGH);
   const uint32_t now = millis();
+  const bool alarmLedOn = ((now - countdown_started_ms_) / 400) % 2 == 0;
+  digitalWrite(PIN_LED_ALARM, alarmLedOn ? HIGH : LOW);
   if (now - last_beep_ > 400) {
     last_beep_ = now;
     digitalWrite(PIN_BUZZER, !digitalRead(PIN_BUZZER));

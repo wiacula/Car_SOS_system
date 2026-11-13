@@ -17,6 +17,8 @@ ESP32 access point itself does not provide internet.
 After startup, the OLED shows a live self-test for five seconds while monitoring
 continues. GPS may still be searching for a fix, and the MQ-2 remains in warm-up
 until its configured warm-up period ends.
+The alarm LED blinks during the countdown and stays on after successful SMS
+delivery.
 
 Keep the ESP32 and MPU-6050 still during the startup calibration screen:
 the sensor settles for three seconds, then the accelerometer and gyroscope
