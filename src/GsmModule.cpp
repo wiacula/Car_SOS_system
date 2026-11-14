@@ -3,11 +3,45 @@
 
 static HardwareSerial& gsmSerial = Serial1;
 
+static bool probeAt(uint32_t baud, uint8_t attempts) {
+  gsmSerial.end();
+  gsmSerial.begin(baud, SERIAL_8N1, PIN_GSM_RX, PIN_GSM_TX);
+  delay(300);
+
+  for (uint8_t attempt = 0; attempt < attempts; ++attempt) {
+    while (gsmSerial.available() > 0) {
+      gsmSerial.read();
+    }
+    gsmSerial.print("AT\r");
+    const uint32_t start = millis();
+    String response;
+    while (millis() - start < 500) {
+      while (gsmSerial.available() > 0) {
+        response += static_cast<char>(gsmSerial.read());
+      }
+      if (response.indexOf("OK") >= 0) {
+        Serial.print("Modem GSM odpowiada na AT, baud ");
+        Serial.println(baud);
+        return true;
+      }
+      delay(5);
+    }
+    delay(100);
+  }
+  return false;
+}
+
 bool GsmModule::begin() {
   ready_ = false;
   sim_ready_ = false;
+  sim_pin_required_ = false;
+  sim_puk_required_ = false;
+  sim_absent_ = false;
+  sms_text_mode_ready_ = false;
+  sim_response_ = "";
   network_registered_ = false;
   signal_quality_ = 99;
+  last_error_ = "";
   pinMode(PIN_GSM_RST, OUTPUT);
   digitalWrite(PIN_GSM_RST, HIGH);
   delay(80);
@@ -16,16 +50,25 @@ bool GsmModule::begin() {
   digitalWrite(PIN_GSM_RST, HIGH);
   delay(800);
 
-  gsmSerial.begin(GSM_BAUD, SERIAL_8N1, PIN_GSM_RX, PIN_GSM_TX);
-  delay(300);
-  sendAt("AT");
-  if (!expectOk(1500)) {
+  static const uint32_t baud_rates[] = {GSM_BAUD, 115200, 57600,
+                                        38400,    19200, 4800};
+  bool at_responded = probeAt(baud_rates[0], 5);
+  for (size_t i = 1;
+       !at_responded && i < sizeof(baud_rates) / sizeof(baud_rates[0]); ++i) {
+    at_responded = probeAt(baud_rates[i], 2);
+  }
+  if (!at_responded) {
     last_error_ = "brak odpowiedzi AT";
+    Serial.println(
+        "Modem GSM nie odpowiedzial na AT przy sprawdzonych predkosciach");
     return false;
   }
 
+  ready_ = true;
   sendAt("ATE0");
-  expectOk(1000);
+  if (!expectOk(1000)) {
+    Serial.println("Modem odpowiada na AT, ale nie potwierdzil ATE0");
+  }
 
   if (SIM_PIN != nullptr && SIM_PIN[0] != '\0') {
     String cmd = "AT+CPIN=\"";
@@ -35,17 +78,16 @@ bool GsmModule::begin() {
     expectOk(3000);
   }
 
-  sendAt("AT+CMGF=1");
-  if (!expectOk(1500)) {
-    last_error_ = "CMGF";
-    return false;
+  if (!setSmsTextMode()) {
+    Serial.print("Modem odpowiada, konfiguracja SMS nieudana: ");
+    Serial.println(last_error_);
   }
 
   sendAt("AT+CSCS=\"GSM\"");
-  expectOk(1000);
+  if (!expectOk(1000)) {
+    Serial.println("Nie udalo sie ustawic kodowania GSM dla SMS");
+  }
 
-  ready_ = true;
-  last_error_ = "";
   return true;
 }
 
@@ -57,9 +99,29 @@ void GsmModule::refreshStatus() {
     return;
   }
 
+  sim_pin_required_ = false;
+  sim_puk_required_ = false;
+  sim_absent_ = false;
   sendAt("AT+CPIN?");
-  const String sim_response = readUntil("OK", 300);
-  sim_ready_ = sim_response.indexOf("+CPIN: READY") >= 0;
+  const String raw_sim_response = readAtResponse(1000);
+  Serial.print("Odpowiedz AT+CPIN?: ");
+  Serial.println(raw_sim_response);
+  sim_response_ = "";
+  for (size_t i = 0; i < raw_sim_response.length(); ++i) {
+    const uint8_t character = raw_sim_response[i];
+    if (character >= 0x20 && character <= 0x7e) {
+      sim_response_ += static_cast<char>(character);
+    }
+  }
+  sim_response_.trim();
+  String normalized_sim_response = sim_response_;
+  normalized_sim_response.toLowerCase();
+  sim_ready_ = normalized_sim_response.indexOf("+cpin: ready") >= 0;
+  sim_pin_required_ = normalized_sim_response.indexOf("sim pin") >= 0;
+  sim_puk_required_ = normalized_sim_response.indexOf("sim puk") >= 0;
+  sim_absent_ = normalized_sim_response.indexOf("not inserted") >= 0 ||
+                normalized_sim_response.indexOf("no sim") >= 0 ||
+                normalized_sim_response.indexOf("+cpin: absent") >= 0;
 
   sendAt("AT+CREG?");
   const String network_response = readUntil("OK", 300);
@@ -84,6 +146,31 @@ void GsmModule::refreshStatus() {
   }
 }
 
+String GsmModule::simStatusText() const {
+  if (!ready_) {
+    return "BRAK AT";
+  }
+  if (sim_ready_) {
+    return "GOTOWA";
+  }
+  if (sim_absent_) {
+    return "BRAK KARTY SIM";
+  }
+  if (sim_pin_required_) {
+    return "WYMAGA PIN";
+  }
+  if (sim_puk_required_) {
+    return "WYMAGA PUK";
+  }
+  if (sim_response_.indexOf("ERROR") >= 0) {
+    return "BRAK SIM";
+  }
+  if (sim_response_.length() == 0) {
+    return "BRAK ODPOWIEDZI";
+  }
+  return "SIM NIEGOTOWA";
+}
+
 uint8_t GsmModule::signalBars() const {
   if (!ready_ || !sim_ready_ || !network_registered_ || signal_quality_ == 99) {
     return 0;
@@ -102,10 +189,12 @@ uint8_t GsmModule::signalBars() const {
 
 String GsmModule::statusText() const {
   if (!ready_) {
-    return "GSM: BRAK MODULU";
+    return "GSM: BRAK ODPOWIEDZI";
   }
   if (!sim_ready_) {
-    return "GSM: BRAK SIM / PIN";
+    String status = "GSM: ";
+    status += simStatusText();
+    return status;
   }
   if (!network_registered_) {
     return "GSM: SZUKA SIECI";
@@ -113,7 +202,24 @@ String GsmModule::statusText() const {
   if (signalBars() == 0) {
     return "GSM: BRAK ZASIEGU";
   }
+  if (!sms_text_mode_ready_) {
+    return "GSM: BLAD KONFIG SMS";
+  }
   return "GSM: SIEC OK";
+}
+
+bool GsmModule::setSmsTextMode() {
+  sendAt("AT+CMGF=1");
+  const String response = readAtResponse(1500);
+  sms_text_mode_ready_ = response.indexOf("OK") >= 0;
+  if (!sms_text_mode_ready_) {
+    last_error_ = "AT+CMGF=1";
+    Serial.print("Odpowiedz AT+CMGF=1: ");
+    Serial.println(response);
+    return false;
+  }
+  last_error_ = "";
+  return true;
 }
 
 void GsmModule::sendAt(const String& cmd) {
@@ -136,14 +242,32 @@ String GsmModule::readUntil(const char* token, uint32_t timeout_ms) {
   return buf;
 }
 
+String GsmModule::readAtResponse(uint32_t timeout_ms) {
+  String response;
+  const uint32_t start = millis();
+  while (millis() - start < timeout_ms) {
+    while (gsmSerial.available() > 0) {
+      response += static_cast<char>(gsmSerial.read());
+      if (response.indexOf("OK") >= 0 || response.indexOf("ERROR") >= 0) {
+        return response;
+      }
+    }
+    delay(5);
+  }
+  return response;
+}
+
 bool GsmModule::expectOk(uint32_t timeout_ms) {
-  const String r = readUntil("OK", timeout_ms);
+  const String r = readAtResponse(timeout_ms);
   return r.indexOf("OK") >= 0;
 }
 
 bool GsmModule::sendSms(const char* number, const String& text) {
   if (!ready_) {
-    last_error_ = "GSM niegotowy";
+    last_error_ = "brak odpowiedzi modemu AT";
+    return false;
+  }
+  if (!sms_text_mode_ready_ && !setSmsTextMode()) {
     return false;
   }
 
@@ -187,11 +311,11 @@ bool GsmModule::sendToAll(const String& text, uint8_t* sent_count) {
 
   failed_numbers_ = numbers;
   if (!ready_) {
-    last_error_ = "brak modulu GSM";
+    last_error_ = "brak odpowiedzi AT modemu";
     return false;
   }
   if (!sim_ready_) {
-    last_error_ = "brak gotowej karty SIM lub wymagany PIN";
+    last_error_ = simStatusText();
     return false;
   }
   if (!network_registered_) {
@@ -225,11 +349,11 @@ bool GsmModule::retryFailed(const String& text, uint8_t* sent_count) {
     return false;
   }
   if (!ready_) {
-    last_error_ = "brak modulu GSM";
+    last_error_ = "brak odpowiedzi AT modemu";
     return false;
   }
   if (!sim_ready_) {
-    last_error_ = "brak gotowej karty SIM lub wymagany PIN";
+    last_error_ = simStatusText();
     return false;
   }
   if (!network_registered_) {

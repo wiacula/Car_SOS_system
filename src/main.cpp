@@ -50,6 +50,8 @@ static void logGsmStatusIfChanged() {
   const String status = gsm.statusText();
   if (status != last_gsm_status) {
     last_gsm_status = status;
+    Serial.print("Stan GSM: ");
+    Serial.println(status);
     logWebEvent(status);
   }
 }
@@ -72,6 +74,7 @@ static DisplayMenuData getDisplayMenuData() {
   data.temperatureValid = cabin.tempValid();
   data.gpsDiagnostics = gps.diagnostics();
   data.gpsFix = gps.hasFix();
+  data.simStatus = gsm.simStatusText();
   data.gsmReady = gsm.ready();
   data.simReady = gsm.simReady();
   data.networkRegistered = gsm.networkRegistered();
@@ -180,6 +183,8 @@ void setup() {
   }
   if (!gsm_ok) {
     Serial.println("GSM niedostepny — tryb DEMO / log Serial");
+    Serial.print("GSM blad inicjalizacji: ");
+    Serial.println(gsm.lastError());
   }
   digitalWrite(PIN_LED_OK, imu_ok ? HIGH : LOW);
 }
@@ -363,6 +368,7 @@ void loop() {
       test.gsmReady = gsm.ready();
       test.simReady = gsm.simReady();
       test.networkRegistered = gsm.networkRegistered();
+      test.gsmStatus = gsm.statusText();
       test.gsmSignalBars = gsm.signalBars();
       test.smsNumbersAvailable = sms_numbers_available;
       test.smsNumbersCount = static_cast<uint8_t>(sms_numbers.size());

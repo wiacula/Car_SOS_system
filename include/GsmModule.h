@@ -13,6 +13,7 @@ class GsmModule {
   bool ready() const { return ready_; }
   bool simReady() const { return sim_ready_; }
   bool networkRegistered() const { return network_registered_; }
+  String simStatusText() const;
   uint8_t signalBars() const;
   String statusText() const;
   String lastError() const { return last_error_; }
@@ -22,11 +23,18 @@ class GsmModule {
  private:
   bool ready_ = false;
   bool sim_ready_ = false;
+  bool sim_pin_required_ = false;
+  bool sim_puk_required_ = false;
+  bool sim_absent_ = false;
+  bool sms_text_mode_ready_ = false;
   bool network_registered_ = false;
   uint8_t signal_quality_ = 99;
+  String sim_response_;
   String last_error_;
   std::vector<String> failed_numbers_;
   void sendAt(const String& cmd);
   String readUntil(const char* token, uint32_t timeout_ms);
+  String readAtResponse(uint32_t timeout_ms);
   bool expectOk(uint32_t timeout_ms);
+  bool setSmsTextMode();
 };

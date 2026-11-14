@@ -19,10 +19,12 @@ struct DisplayMenuData {
   float temperatureC = 0;
   bool temperatureValid = false;
   String gpsDiagnostics;
+  String simStatus;
   bool gpsFix = false;
   bool gsmReady = false;
   bool simReady = false;
   bool networkRegistered = false;
+  String gsmStatus;
 };
 
 struct StartupSelfTestData {
@@ -36,6 +38,7 @@ struct StartupSelfTestData {
   bool gsmReady = false;
   bool simReady = false;
   bool networkRegistered = false;
+  String gsmStatus;
   uint8_t gsmSignalBars = 0;
   bool smsNumbersAvailable = false;
   uint8_t smsNumbersCount = 0;

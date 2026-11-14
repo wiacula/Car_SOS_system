@@ -75,17 +75,7 @@ void DisplayUi::showStartupSelfTest(const StartupSelfTestData& data) {
                                                   : "BRAK DANYCH"));
 
   oled_.setCursor(3, 39);
-  if (!data.gsmReady) {
-    oled_.print("GSM: BLAD MODULU");
-  } else if (!data.simReady) {
-    oled_.print("GSM: BLAD SIM / PIN");
-  } else if (!data.networkRegistered) {
-    oled_.print("GSM: SZUKA SIECI");
-  } else {
-    oled_.print("GSM: OK ");
-    oled_.print(data.gsmSignalBars);
-    oled_.print("/4");
-  }
+  oled_.print(data.gsmStatus);
 
   oled_.setCursor(3, 48);
   if (!data.smsNumbersAvailable) {
@@ -401,15 +391,18 @@ void DisplayUi::showMenu(uint8_t page,
       oled_.write(position < length ? menuData.gpsDiagnostics[position] : ' ');
     }
   } else {
-    oled_.setCursor(3, 13);
-    oled_.print("SIM: ");
-    oled_.print(!menuData.gsmReady ? "BRAK MODULU"
-                                   : (menuData.simReady ? "GOTOWA" : "BRAK / PIN"));
-    oled_.setCursor(3, 22);
-    oled_.print("SIEC: ");
-    oled_.print(!menuData.gsmReady
-                    ? "BRAK MODULU"
-                    : (menuData.networkRegistered ? "ZAREJESTROWANA" : "BRAK"));
+    if (!menuData.gsmReady) {
+      oled_.setCursor(3, 13);
+      oled_.print("MODEM: NIE WYKRYTO");
+      oled_.setCursor(3, 22);
+      oled_.print("SIM / SIEC: N/D");
+    } else {
+      oled_.setCursor(3, 13);
+      oled_.print("MODEM: WYKRYTY");
+      oled_.setCursor(3, 22);
+      oled_.print("SIM: ");
+      oled_.print(menuData.simStatus);
+    }
     oled_.setCursor(3, 31);
     oled_.print(gsmStatus);
     oled_.setCursor(3, 43);

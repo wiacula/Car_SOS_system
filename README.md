@@ -20,6 +20,12 @@ until its configured warm-up period ends.
 The alarm LED blinks during the countdown and stays on after successful SMS
 delivery.
 
+For GSM startup diagnostics, open the PlatformIO Serial Monitor at 115200 baud.
+The firmware reports whether the modem answered `AT` and which UART baud rate
+worked; a SIM card is not required for this communication test.
+The GSM status distinguishes no AT response, missing/locked SIM, network
+registration, signal, and SMS-mode configuration.
+
 Keep the ESP32 and MPU-6050 still during the startup calibration screen:
 the sensor settles for three seconds, then the accelerometer and gyroscope
 offsets are sampled for about one second. The startup orientation becomes
